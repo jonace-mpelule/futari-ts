@@ -1,17 +1,14 @@
 /** biome-ignore-all lint/suspicious/useIterableCallbackReturn: <'explanation'> */
 /** biome-ignore-all lint/style/noNonNullAssertion: <'explanation'> */
-
+import fs from "node:fs/promises";
 import { createServer } from "node:http";
+import path from "node:path";
 import { Chalk } from "chalk";
 import signale from "signale";
 import type { Config } from "../types/config.t";
-import type { Route } from "../types/network";
-import {
-	checkRoutes,
-	getDirectoryPathsRecursive,
-	isPortAvailable,
-	processRoutes,
-} from "../utils/utils";
+import type { RuntimeRoutes } from "../types/runtime.t";
+import { isPortAvailable } from "../utils/utils";
+import BuildManifest from "./buildManifest";
 import handleServer from "./handleServer";
 
 export function Server() {
@@ -24,10 +21,28 @@ export function Server() {
 		serve: async (callback?: () => void) => {
 			const chalk = new Chalk();
 			const bootTime = Date.now();
-			// const BASE_PATH = `${appRootPath.path}/src/routes`
-			const packageRoot = nConfig.root;
-			const BASE_PATH = `${packageRoot}/src/routes`;
-			const routes: Array<Route> = [];
+
+			// build manifest here
+			await BuildManifest(nConfig.root);
+
+			const __manifest_path = path.join(
+				nConfig.root,
+				"./.futari",
+				"manifest.js",
+			);
+			const exists = await fs.exists(__manifest_path);
+;
+			if (!exists) {
+				signale.log("Error: Manifest Not Found. Please run build command");
+				process.exit(1);
+			}
+
+			const __manifest = await import(__manifest_path);
+			const routes: Array<RuntimeRoutes> = __manifest.default.routes;
+
+
+
+			// const routes: Array<Route> = [];
 			const portInUse = await isPortAvailable(nConfig.port);
 			/**
 			 * Checking if port is available for use and failing early
@@ -43,54 +58,14 @@ export function Server() {
 
 			const ip = await import("ip");
 
-			const localLabel = "Local: ".padEnd(10);   // "Local:    "
+			const localLabel = "Local: ".padEnd(10); // "Local:    "
 			const networkLabel = "Network: ".padEnd(10); // "Network:  "
 
 			signale.log(`\n${localLabel}`, `http://localhost:${nConfig.port}`);
 			signale.log(networkLabel, `http://${ip.address()}:${nConfig.port}\n`);
-						/**
-			 * Checking Route Directories
-			 */
-			const dirs = await getDirectoryPathsRecursive(BASE_PATH);
+			
+			
 
-			if (!dirs.length) {
-				signale.error(
-					"Routes Not Found:",
-					"Please add +routes files in ./src/routes/<base-route>/+route",
-				);
-				process.exit(1);
-			}
-
-			/**
-			 * Process
-			 */
-			for (const dir of dirs) {
-				const route: string = dir.split("src/routes")[1] ?? "/";
-				const baseRoute = route.replace("[id]", ":id");
-				routes.push({
-					baseRoute,
-					subRoutes: [],
-					filePath: dir,
-				});
-			}
-
-			/**
-			 * Checking if routes are valid
-			 */
-			for (const route of routes) {
-				checkRoutes(`${route.filePath}/+route.ts`);
-			}
-
-			/**
-			 * Processing Routes
-			 * Adds Middleware to Routes from Decorators (if any)
-			 */
-			await Promise.all(
-				routes.map(async (e, index) => {
-					const pResult = await processRoutes(`${e.filePath}/+route.ts`);
-					routes[index]!.subRoutes = pResult ?? [];
-				}),
-			);
 
 			const server = createServer(async (req: any, res) => {
 				/**
@@ -110,7 +85,7 @@ export function Server() {
 					const startTime = Date.now();
 					const bootDuration = ((startTime - bootTime) / 1000).toFixed(2);
 					signale.info(chalk.yellow("Booting Up..."));
-					signale.success(`Server is ready! (${bootDuration}s)`, '\n\n');
+					signale.success(`Server is ready! (${bootDuration}s)`, "\n\n");
 				}
 			});
 		},

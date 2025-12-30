@@ -32,9 +32,10 @@ export type Route = {
 	filePath: string
 }
 
+export type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "CONNECT" | "TRACE"
 export type SubRoute = {
 	id: string, 
-	method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS" | "CONNECT" | "TRACE"
+	method:Method, 
 	path: string,
 	handlerKey: string,
 	middlewares: Array<Middleware>

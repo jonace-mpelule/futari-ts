@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/suspicious/noExplicitAny: <'explanation'> */
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import chalk from "chalk";
@@ -71,22 +72,15 @@ export const processRoutes = async (filePath: string) => {
 };
 
 export const runRoute = async ({
-	filePath,
-	handlerKey,
+	func,
 	req,
 	res,
 }: {
-	filePath: string;
-	handlerKey: string;
+	func: (...args: any)=> void, 
 	req: Request;
 	res: Response;
 }) => {
-	const module = await import(filePath);
-	if (typeof module.default !== "function") {
-		throw new Error("Default export is not a function");
-	}
-
-	return new module.default()[handlerKey](req, res);
+	return func(req, res);
 };
 
 export const runDefault = async (filePath: string) => {
