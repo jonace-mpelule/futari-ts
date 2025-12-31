@@ -52,11 +52,11 @@ declare function Server(): {
  * Generic controller wrapper.
  * Allows per-handler status codes and custom error handling.
  */
-declare function controllerHandler<T = unknown>(handler: (ctx: Context) => Promise<T>, options?: {
+declare function RouteHandler<T = unknown, R = unknown>(handler: <T>(ctx: Context<T>) => Promise<R> | R, options?: {
   successStatus?: number;
-  transform?: (data: T) => unknown;
+  transform?: (data: R) => unknown;
   onError?: (error: unknown, req: Request, res: Response) => unknown;
-}): (req: Request, res: Response) => Promise<void>;
+}): (req: Request<T>, res: Response) => Promise<void>;
 //#endregion
-export { type Config, Connect, type Context, DefRoute, Delete, Get, Head, Options, Patch, Post, Put, type Request, type Response, Server, Trace, Use, controllerHandler };
+export { type Config, Connect, type Context, DefRoute, Delete, Get, Head, Options, Patch, Post, Put, type Request, type Response, RouteHandler, Server, Trace, Use };
 //# sourceMappingURL=index.d.mts.map

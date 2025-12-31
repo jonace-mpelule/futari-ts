@@ -21,6 +21,12 @@ export type Context<B ={}> = {
 	next?: Next
 }
 
+export type MiddlewareContext<B ={}> = {
+	req: Request<B>, 
+	res: Response, 
+	next: Next
+}
+
 export type Router = {
 	id: string, 
 	isRouter: boolean

@@ -32,13 +32,6 @@ export default async function BuildManifest(root: string) {
 			filePath: dir,
 		});
 	}
-	// console.log(routes)
-	// console.log(root)
-	// console.log(BASE_PATH)
-
-	/**
-	 * Checking if routes are valid
-	 */
 	for (const route of routes) {
 		checkRoutes(`${route.filePath}/+route.ts`);
 	}

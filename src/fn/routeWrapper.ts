@@ -8,20 +8,22 @@ import type { Context, Request, Response } from "../types/network.ts";
  * Generic controller wrapper.
  * Allows per-handler status codes and custom error handling.
  */
-export function controllerHandler<T = unknown>(
-	handler: (ctx: Context) => Promise<T>,
+export function RouteHandler<T = unknown, R = unknown>(
+	handler: <T>(ctx: Context<T>) => Promise<R> | R,
 	options?: {
 		successStatus?: number; // Custom success HTTP status
-		transform?: (data: T) => unknown; // Optional response data transformer
+		transform?: (data: R) => unknown; // Optional response data transformer
 		onError?: (error: unknown, req: Request, res: Response) => unknown; // Custom error handler
 	},
 ) {
-	return async (req: Request, res: Response) => {
+	return async (req: Request<T>, res: Response) => {
 		try {
-			const result = await handler({
+			const result = await handler<T>({
 				req: req,
 				res: res,
 			});
+
+			// Type-safe transformation: allow transform to handle both T and R
 			const transformed = options?.transform
 				? options.transform(result)
 				: result;
