@@ -22,25 +22,28 @@ export function Server() {
 			const chalk = new Chalk();
 			const bootTime = Date.now();
 
-			// build manifest here
-			await BuildManifest(nConfig.root);
+			const isBuildOnly = process.argv.includes("--build");
+
+			if (isBuildOnly) {
+				// build manifest here
+				await BuildManifest(nConfig.root);
+			}
 
 			const __manifest_path = path.join(
 				nConfig.root,
 				"./.futari",
 				"manifest.js",
 			);
-			const exists = await fs.exists(__manifest_path);
-;
-			if (!exists) {
+
+			try {
+				await fs.access(__manifest_path);
+			} catch {
 				signale.log("Error: Manifest Not Found. Please run build command");
 				process.exit(1);
 			}
 
 			const __manifest = await import(__manifest_path);
 			const routes: Array<RuntimeRoutes> = __manifest.default.routes;
-
-
 
 			// const routes: Array<Route> = [];
 			const portInUse = await isPortAvailable(nConfig.port);
@@ -63,9 +66,6 @@ export function Server() {
 
 			signale.log(`\n${localLabel}`, `http://localhost:${nConfig.port}`);
 			signale.log(networkLabel, `http://${ip.address()}:${nConfig.port}\n`);
-			
-			
-
 
 			const server = createServer(async (req: any, res) => {
 				/**

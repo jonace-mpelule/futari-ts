@@ -1,9 +1,8 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: <'explanation'> */
 import type { ServerResponse } from "node:http";
-import type { Context } from "../../build/index.d.mts";
 import { HTTP_STATUS } from "../constants/httpStatus.constants";
 import { apiEventLog } from "../events/apiEventLog.event";
-import type { Request } from "../types/network";
+import type { Context, Request } from "../types/network";
 import type { RuntimeRoutes } from "../types/runtime.t";
 import Parse from "../utils/body-parser";
 import { runMiddlewares } from "../utils/runMiddleware";

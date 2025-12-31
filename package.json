@@ -1,6 +1,6 @@
 {
   "name": "futari",
-  "module": "./buid/index.js",
+  "module": "./buid/index.mjs",
   "type": "module",
   "exports": {
     ".": {

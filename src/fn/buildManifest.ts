@@ -1,13 +1,16 @@
 /** biome-ignore-all lint/style/noNonNullAssertion: <explanation> */
+/** biome-ignore-all lint/suspicious/noNonNullAssertedOptionalChain: <explanation> */
 /** biome-ignore-all lint/style/useTemplate: <explanation> */
 import fs from "node:fs";
 import path from "node:path";
 import prettier from "prettier";
+import { build } from "tsdown";
 import type { Route } from "../types/network";
 import {
-    checkRoutes,
-    getDirectoryPathsRecursive,
-    processRoutes,
+	checkRoutes,
+	getDirectoryPathsRecursive,
+	processRoutes,
+	silenceLogs,
 } from "../utils/utils";
 
 export default async function BuildManifest(root: string) {
@@ -18,8 +21,7 @@ export default async function BuildManifest(root: string) {
 	const BASE_PATH = `${root}/src/routes`;
 	const dirs = await getDirectoryPathsRecursive(BASE_PATH);
 	const routes: Array<Route> = [];
-
-	const manifestPath = path.join(root, ".futari");
+	// const manifestPath = path.join(root, ".futari");
 
 	for (const dir of dirs) {
 		const route: string = dir.split("src/routes")[1] ?? "/";
@@ -30,6 +32,9 @@ export default async function BuildManifest(root: string) {
 			filePath: dir,
 		});
 	}
+	// console.log(routes)
+	// console.log(root)
+	// console.log(BASE_PATH)
 
 	/**
 	 * Checking if routes are valid
@@ -56,18 +61,41 @@ export default async function BuildManifest(root: string) {
 	);
 
 	const importsMap = new Map();
-	routes.forEach((route) => {
-		if (!importsMap.has(route.filePath)) {
-			const className = `__Route__${importsMap.size}__`; // unique identifier
-			const importPath = path
-				.relative(manifestPath, route.filePath)
-				.replace(/\\/g, "/");
-			importsMap.set(route.filePath, { className, importPath });
-		}
+	const validRoutes = routes.filter(
+		(e) => e.filePath !== null || e.filePath !== "",
+	);
+
+	const buildResult = await buildFile({
+		filePaths: validRoutes.map((e) => e.filePath + "/+route.ts"),
+		root,
 	});
+	console.log(buildResult);
+
+	for (let i = 0; i < buildResult.length; i++) {
+		validRoutes[i]!.filePath = buildResult[i]!;
+		const className = `__Route__${importsMap.size}__`;
+		importsMap.set(validRoutes[i]?.filePath, { className, path: buildResult[i] });
+	}
+
+
+	// for (const route of routes) {
+	// 	if (!importsMap.has(route.filePath)) {
+	// 		console.log(1, 'working on file')
+	// 		 // unique identifier
+
+	// 		/**
+	// 		 * Build File
+	// 		 */
+	// 		console.log('file result:', buildResult)
+	// 		const importPath = path
+	// 			.relative(manifestPath, route.filePath)
+	// 			.replace(/\\/g, "/");
+	// 		
+	// 	}
+	// }
 
 	const importLines = [...importsMap.values()]
-		.map((i) => `import ${i.className} from '${i.importPath}/+route.ts'`)
+		.map((i) => `import ${i.className} from './chunks/${i.path}'`)
 		.join("\n");
 
 	// Step 3: Instantiate each class
@@ -75,7 +103,7 @@ export default async function BuildManifest(root: string) {
 		.map((i) => `const ${i.className.toLowerCase()} = new ${i.className}()`)
 		.join("\n");
 
-	const routeLines = routes
+	const routeLines = validRoutes
 		.flatMap((route) => {
 			const { className } = importsMap.get(route.filePath);
 			const instanceName = className.toLowerCase();
@@ -85,7 +113,7 @@ export default async function BuildManifest(root: string) {
 		})
 		.join(",\n");
 
-        const code = `
+	const code = `
         /**
          * ! IMPORTANT FILE - DO NOT DELETE
          *
@@ -123,7 +151,7 @@ export default async function BuildManifest(root: string) {
             ${routeLines}
           ]
         }
-        `.trim()
+        `.trim();
 
 	const formatted = await prettier.format(code, {
 		parser: "babel",
@@ -137,4 +165,27 @@ export default async function BuildManifest(root: string) {
 
 function toImportPath(from: string, file: string) {
 	return `${path.relative(from, file).replace(/\\/g, "/")}`;
+}
+
+export async function buildFile({
+	filePaths,
+	root,
+}: {
+	filePaths: Array<string>;
+	root: string;
+}): Promise<Array<string>> {
+	const result = await silenceLogs(() =>
+		build({
+			entry: filePaths,
+			outDir: `${root}/.futari/chunks`,
+			format: "esm",
+			skipNodeModulesBundle: false,
+			unbundle: false,
+			clean: true,
+			logLevel: "silent",
+			sourcemap: false,
+		}),
+	);
+
+	return [...result.flatMap((e) => e.chunks.map((e) => e.fileName))].slice(0,-1);
 }

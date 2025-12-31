@@ -17,7 +17,18 @@ import type {
 } from "../types/network";
 
 export const checkRoutes = async (filePath: string) => {
-	const module = await import(filePath);
+	
+	let module: any;
+	if(filePath.endsWith('/+route.ts')) {
+		module = await import(filePath)
+	} else {
+		signale.log(
+			chalk.red("Error:"),
+			`${filePath.split("/routes")[1]} has no default class or +route.ts file is not defined`,
+		);
+		process.exit(1);
+	}
+
 
 	if (typeof module.default !== "function") {
 		signale.log(
@@ -140,3 +151,19 @@ export async function isPortAvailable(
 		);
 	});
 }
+
+
+export async function silenceLogs<T>(fn: () => Promise<T>): Promise<T> {
+	const stdoutWrite = process.stdout.write
+	const stderrWrite = process.stderr.write
+  
+	process.stdout.write = (() => true) as any
+	process.stderr.write = (() => true) as any
+  
+	try {
+	  return await fn()
+	} finally {
+	  process.stdout.write = stdoutWrite
+	  process.stderr.write = stderrWrite
+	}
+  }
