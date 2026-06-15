@@ -4,6 +4,9 @@ node_modules
 # output
 out
 dist
+build
+.futari
+tests/examples/app/.futari
 *.tgz
 
 # code coverage

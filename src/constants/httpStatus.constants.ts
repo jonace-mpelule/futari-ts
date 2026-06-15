@@ -1,7 +1,7 @@
 /**
  * * List of Http Statuses
  */
-export const HTTP_STATUS = {
+export const Status = {
 	// 1xx Informational
 	CONTINUE: 100,
 	SWITCHING_PROTOCOLS: 101,
@@ -73,4 +73,8 @@ export const HTTP_STATUS = {
 	LOOP_DETECTED: 508,
 	NOT_EXTENDED: 510,
 	NETWORK_AUTHENTICATION_REQUIRED: 511,
-};
+} as const;
+
+export const HTTP_STATUS = Status;
+
+export type StatusCode = (typeof Status)[keyof typeof Status] | number;

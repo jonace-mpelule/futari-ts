@@ -6,6 +6,7 @@ import path from "node:path";
 import { Chalk } from "chalk";
 import signale from "signale";
 import type { Config } from "../types/config.t";
+import type { Request } from "../types/network";
 import type { RuntimeRoutes } from "../types/runtime.t";
 import { isPortAvailable } from "../utils/utils";
 import BuildManifest from "./buildManifest";
@@ -20,7 +21,7 @@ export function Server() {
 		},
 		serve: async (callback?: () => void) => {
 			const chalk = new Chalk();
-			const bootTime = Date.now();
+			const bootTime = performance.now();
 
 			const isBuildOnly = process.argv.includes("--build");
 
@@ -51,30 +52,32 @@ export function Server() {
 			 * Checking if port is available for use and failing early
 			 */
 			if (portInUse.isInUse) {
-				signale.error("Port is already in use by another process.");
+				signale.error(
+					`Port ${nConfig.port} is already in use by another process.`,
+				);
 				process.exit(1);
 			}
 
 			/**
-			 * * Getting ip addresss and printing ports
+			 * Getting ip addresss and printing ports
 			 */
-
 			const ip = await import("ip");
 
-			const localLabel = "Local: ".padEnd(10); // "Local:    "
-			const networkLabel = "Network: ".padEnd(10); // "Network:  "
+			const localLabel = "Local: ".padEnd(10);
+			const networkLabel = "Network: ".padEnd(10);
 
 			signale.log(`\n${localLabel}`, `http://localhost:${nConfig.port}`);
 			signale.log(networkLabel, `http://${ip.address()}:${nConfig.port}\n`);
 
-			const server = createServer(async (req: any, res) => {
+			const server = createServer(async (req, res) => {
 				/**
 				 * All server events handler
 				 */
 				handleServer({
-					req,
+					req: req as Request,
 					res,
 					routes,
+					behaviors: nConfig.behaviors,
 				});
 			});
 
@@ -82,7 +85,7 @@ export function Server() {
 				if (callback !== undefined) {
 					callback();
 				} else {
-					const startTime = Date.now();
+					const startTime = performance.now();
 					const bootDuration = ((startTime - bootTime) / 1000).toFixed(2);
 					signale.info(chalk.yellow("Booting Up..."));
 					signale.success(`Server is ready! (${bootDuration}s)`, "\n\n");

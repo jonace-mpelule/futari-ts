@@ -1,11 +1,14 @@
-export type Config = { 
-    cors: boolean,
-    /**
-     * @description - Root path of your project file
-     * @example - root: proccess.cwd()
-     */
-    root: string,
+import type { BehaviorConfig } from "./behavior.t";
 
-    port: number,
-    compressionEnabled?: boolean,
-}
+export type Config = {
+	cors: boolean;
+	/**
+	 * @description - Root path of your project file
+	 * @example - root: proccess.cwd()
+	 */
+	root: string;
+
+	port: number;
+	compressionEnabled?: boolean;
+	behaviors?: BehaviorConfig;
+};

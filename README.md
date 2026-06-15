@@ -1,15 +1,35 @@
 # futari
 
+## Create A Project
+
+```bash
+create-futari my-app
+```
+
+Then:
+
+```bash
+cd my-app
+bun install
+bun run dev
+```
+
+## Local Development
+
 To install dependencies:
 
 ```bash
 bun install
 ```
 
-To run:
+To build the package:
 
 ```bash
-bun run index.ts
+bun run build
 ```
 
-This project was created using `bun init` in bun v1.3.1. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+To run tests:
+
+```bash
+bun test
+```

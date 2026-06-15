@@ -1,54 +1,69 @@
 ----
-title: Futari Syntax 
+title: Futari Syntax
 ----
 
 ## Starting The Server
 
 ```ts
 // index.ts
-import {Server} from "futari"
+import { Server } from "futari";
 
-const app = Server()
+const app = Server();
 
 app.config({
-    cors: true, 
-    compression: {
-        enabled: true, 
-    }, 
-    layerCaching: true, 
-})
+  root: process.cwd(),
+  port: 3000,
+});
 
-app.liveOn(3000, () => {
-    console.log(`server running`)
-})
+await app.serve(() => {
+  console.log("server running");
+});
 ```
 
+## Routes
 
 ```ts
-// src/routes/auth
-@Route()
-export default class Auth {
-    f: ServerFNs
-    constructor(config){
-        f: config
-    }
+// src/routes/auth/+route.ts
+import { DefRoute, Post, RouteHandler, Use, type MiddlewareContext } from "futari";
 
-    @Post('/')
-    @Mid(CAuthClient.Guard())
-    @Mid(f.SignedRoute({sources: ['mobile']}))
-    @Mid(f.AcceptOnly(['application/json']))
-    @Mid(f.Validate(Login))
-    @Mid(f.Limit(100))
-    login = f.handler(async (req) => {
-        return {
-            data: ''
-        }
-    })
+function requireJson({ req, res, next }: MiddlewareContext) {
+  if (req.headers["content-type"] !== "application/json") {
+    res.writeHead(415, { "content-type": "application/json" });
+    res.end(JSON.stringify({ message: "Unsupported Media Type" }));
+    return;
+  }
+
+  return next();
+}
+
+@DefRoute()
+export default class AuthRoute {
+  @Post("/")
+  @Use(requireJson)
+  login = RouteHandler(async ({ req }) => {
+    return {
+      data: req.body,
+    };
+  });
 }
 ```
 
+## Middleware
+
+Middleware is function-based in v1. A middleware receives `{ req, res, next }`.
+Call `next()` to continue, `next(error)` to return a framework `500`, or end the
+response yourself to stop the chain.
+
 ```ts
-export class LoginDTO implements FutariValidator {
-    password: 'string -> @Password()'
+import type { MiddlewareContext } from "futari";
+
+export async function auth({ req, res, next }: MiddlewareContext) {
+  if (!req.headers.authorization) {
+    res.writeHead(401, { "content-type": "application/json" });
+    res.end(JSON.stringify({ message: "Unauthorized" }));
+    return;
+  }
+
+  await next();
 }
 ```

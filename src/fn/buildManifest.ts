@@ -1,15 +1,12 @@
-/** biome-ignore-all lint/style/noNonNullAssertion: <explanation> */
-/** biome-ignore-all lint/suspicious/noNonNullAssertedOptionalChain: <explanation> */
-/** biome-ignore-all lint/style/useTemplate: <explanation> */
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import prettier from "prettier";
 import { build } from "tsdown";
-import type { Route } from "../types/network";
+import type { Route, RouteController } from "../types/network";
 import {
 	checkRoutes,
 	getDirectoryPathsRecursive,
-	processRoutes,
 	silenceLogs,
 } from "../utils/utils";
 
@@ -18,90 +15,93 @@ export default async function BuildManifest(root: string) {
 		recursive: true,
 	});
 
-	const BASE_PATH = `${root}/src/routes`;
-	const dirs = await getDirectoryPathsRecursive(BASE_PATH);
-	const routes: Array<Route> = [];
-	// const manifestPath = path.join(root, ".futari");
+	const basePath = path.join(root, "src", "routes");
+	const routeDirs = await getDirectoryPathsRecursive(basePath);
+	const routeEntries = await Promise.all(
+		routeDirs.map(async (dir) => {
+			const routeFile = path.join(dir, "+route.ts");
+			try {
+				await fs.promises.access(routeFile);
+			} catch {
+				return null;
+			}
 
-	for (const dir of dirs) {
-		const route: string = dir.split("src/routes")[1] ?? "/";
-		const baseRoute = route.replace("[id]", ":id");
-		routes.push({
-			baseRoute,
-			subRoutes: [],
-			filePath: dir,
-		});
-	}
-	for (const route of routes) {
-		checkRoutes(`${route.filePath}/+route.ts`);
-	}
+			const route = dir.split("src/routes")[1] ?? "/";
+			return {
+				baseRoute: normalizeRoutePath(route.replace(/\[([^\]]+)\]/g, ":$1")),
+				subRoutes: [],
+				filePath: dir,
+			};
+		}),
+	);
+	const routes: Array<Route> = routeEntries.filter((route) => route !== null);
 
-	/**
-	 * Processing Routes
-	 * Adds Middleware to Routes from Decorators (if any)
-	 */
 	await Promise.all(
-		routes.map(async (e, index) => {
-			const pResult = await processRoutes(`${e.filePath}/+route.ts`);
-			routes[index]!.subRoutes = pResult ?? [];
+		routes.map((route) => checkRoutes(`${route.filePath}/+route.ts`)),
+	);
+
+	const validRoutes = routes.filter((route) => route.filePath);
+	const buildResult = await buildFile({
+		filePaths: validRoutes.map((route) => `${route.filePath}/+route.ts`),
+		root,
+	});
+
+	const manifestRoutes = await Promise.all(
+		validRoutes.map(async (route, index) => {
+			const chunkPath = buildResult[index];
+			if (!chunkPath) {
+				throw new Error(`Missing build output for route ${route.filePath}`);
+			}
+			const modulePath = path.join(root, ".futari", "chunks", chunkPath);
+			const module = await import(
+				`${pathToFileURL(modulePath).href}?t=${Date.now()}`
+			);
+			const controller = module.default as RouteController;
+			const subRoutes = (controller.__futari_routes ?? []).map((subRoute) => ({
+				...subRoute,
+				middlewares: (controller.__futari_middlewares ?? []).filter(
+					(middleware) =>
+						middleware.id === subRoute.id &&
+						middleware.handlerKey === subRoute.handlerKey,
+				),
+				behavior: mergeBehaviors(
+					(controller.__futari_behaviors ?? [])
+						.filter(
+							(behavior) =>
+								behavior.id === subRoute.id &&
+								behavior.handlerKey === subRoute.handlerKey,
+						)
+						.map((behavior) => behavior.config),
+				),
+			}));
+
+			return {
+				...route,
+				chunkPath,
+				className: `__Route__${index}__`,
+				subRoutes,
+			};
 		}),
 	);
 
-	const routesObj = routes.flatMap((route) =>
-		route.subRoutes.map((subRoute) => ({
-			[`${subRoute.method}:${route.baseRoute}${subRoute.path}`]: "",
-		})),
-	);
-
-	const importsMap = new Map();
-	const validRoutes = routes.filter(
-		(e) => e.filePath !== null || e.filePath !== "",
-	);
-
-	const buildResult = await buildFile({
-		filePaths: validRoutes.map((e) => e.filePath + "/+route.ts"),
-		root,
-	});
-	console.log(buildResult);
-
-	for (let i = 0; i < buildResult.length; i++) {
-		validRoutes[i]!.filePath = buildResult[i]!;
-		const className = `__Route__${importsMap.size}__`;
-		importsMap.set(validRoutes[i]?.filePath, { className, path: buildResult[i] });
-	}
-
-
-	// for (const route of routes) {
-	// 	if (!importsMap.has(route.filePath)) {
-	// 		console.log(1, 'working on file')
-	// 		 // unique identifier
-
-	// 		/**
-	// 		 * Build File
-	// 		 */
-	// 		console.log('file result:', buildResult)
-	// 		const importPath = path
-	// 			.relative(manifestPath, route.filePath)
-	// 			.replace(/\\/g, "/");
-	// 		
-	// 	}
-	// }
-
-	const importLines = [...importsMap.values()]
-		.map((i) => `import ${i.className} from './chunks/${i.path}'`)
+	const importLines = manifestRoutes
+		.map(
+			(route) => `import ${route.className} from './chunks/${route.chunkPath}'`,
+		)
 		.join("\n");
 
-	// Step 3: Instantiate each class
-	const instancesLines = [...importsMap.values()]
-		.map((i) => `const ${i.className.toLowerCase()} = new ${i.className}()`)
+	const instancesLines = manifestRoutes
+		.map(
+			(route) =>
+				`const ${route.className.toLowerCase()} = new ${route.className}()`,
+		)
 		.join("\n");
 
-	const routeLines = validRoutes
+	const routeLines = manifestRoutes
 		.flatMap((route) => {
-			const { className } = importsMap.get(route.filePath);
-			const instanceName = className.toLowerCase();
+			const instanceName = route.className.toLowerCase();
 			return route.subRoutes.map((subRoute) => {
-				return `{ method: '${subRoute.method}', path: '${route.baseRoute}${subRoute.path}', handler: ${instanceName}.${subRoute.handlerKey}.bind(${instanceName}), middlewares: [] }`;
+				return `{ id: '${subRoute.id}', method: '${subRoute.method}', path: '${normalizeRoutePath(`${route.baseRoute}${subRoute.path}`)}', handler: ${instanceName}.${subRoute.handlerKey}.bind(${instanceName}), middlewares: getMiddlewares(${route.className}, '${subRoute.id}'), behavior: getBehavior(${route.className}, '${subRoute.id}') }`;
 			});
 		})
 		.join(",\n");
@@ -112,7 +112,7 @@ export default async function BuildManifest(root: string) {
          *
          * This manifest file is generated at build time.
          * It contains all route definitions for the backend framework.
-         * 
+         *
          * Each route includes:
          *   - HTTP method
          *   - Full path
@@ -122,15 +122,37 @@ export default async function BuildManifest(root: string) {
          * The imports and class instances are fully resolved at build time,
          * so no filesystem scanning or dynamic imports are required at runtime.
          */
-        
+
         ${importLines}
-        
+
+        function getMiddlewares(controller, routeId) {
+          return (controller.__futari_middlewares ?? [])
+            .filter((middleware) => middleware.id === routeId)
+            .map((middleware) => middleware.handler)
+        }
+
+        function mergeBehaviors(configs) {
+          return configs.reduce((merged, config) => ({
+            ...merged,
+            ...config,
+            guards: [...(merged.guards ?? []), ...(config.guards ?? [])],
+          }), {})
+        }
+
+        function getBehavior(controller, routeId) {
+          return mergeBehaviors(
+            (controller.__futari_behaviors ?? [])
+              .filter((behavior) => behavior.id === routeId)
+              .map((behavior) => behavior.config)
+          )
+        }
+
         /**
          * Instances of route classes
          * Each class is instantiated once and reused for all its subRoutes
          */
         ${instancesLines}
-        
+
         /**
          * Exported routes array
          * Each object contains:
@@ -156,8 +178,23 @@ export default async function BuildManifest(root: string) {
 	);
 }
 
-function toImportPath(from: string, file: string) {
-	return `${path.relative(from, file).replace(/\\/g, "/")}`;
+function mergeBehaviors(
+	configs: Array<import("../types/behavior.t").BehaviorConfig>,
+) {
+	const merged: import("../types/behavior.t").BehaviorConfig = {};
+	for (const config of configs) {
+		Object.assign(merged, config);
+		merged.guards = [...(merged.guards ?? []), ...(config.guards ?? [])];
+	}
+	return merged;
+}
+
+function normalizeRoutePath(routePath: string) {
+	const normalized = routePath.replace(/\/+/g, "/");
+	if (normalized.length > 1 && normalized.endsWith("/")) {
+		return normalized.slice(0, -1);
+	}
+	return normalized || "/";
 }
 
 export async function buildFile({
@@ -167,9 +204,14 @@ export async function buildFile({
 	filePaths: Array<string>;
 	root: string;
 }): Promise<Array<string>> {
+	if (!filePaths.length) return [];
+
+	const entries = Object.fromEntries(
+		filePaths.map((filePath, index) => [`route-${index}`, filePath]),
+	);
 	const result = await silenceLogs(() =>
 		build({
-			entry: filePaths,
+			entry: entries,
 			outDir: `${root}/.futari/chunks`,
 			format: "esm",
 			skipNodeModulesBundle: false,
@@ -180,5 +222,19 @@ export async function buildFile({
 		}),
 	);
 
-	return [...result.flatMap((e) => e.chunks.map((e) => e.fileName))].slice(0,-1);
+	const chunks = result.flatMap((output) => output.chunks);
+	return filePaths.map((filePath) => {
+		const resolved = path.resolve(filePath);
+		const chunk = chunks.find((chunk) => {
+			const facadeModuleId =
+				"facadeModuleId" in chunk ? chunk.facadeModuleId : undefined;
+			return facadeModuleId ? path.resolve(facadeModuleId) === resolved : false;
+		});
+
+		if (!chunk) {
+			throw new Error(`Unable to resolve build output for route ${filePath}`);
+		}
+
+		return chunk.fileName;
+	});
 }
